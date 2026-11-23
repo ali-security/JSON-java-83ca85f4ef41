@@ -35,6 +35,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -43,6 +44,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.json.XML;
 import org.json.XMLParserConfiguration;
+import org.json.XMLXsiTypeConverter;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -1070,6 +1072,79 @@ public class XMLConfigurationTest {
         JSONObject expetedJsonObject = new JSONObject(expectedStr);
 
         Util.compareActualVsExpectedJsonObjects(jsonObject, expetedJsonObject);
+    }
+
+    @Test
+    public void testMaxNestingDepthIsSet() {
+        XMLParserConfiguration xmlParserConfiguration = XMLParserConfiguration.ORIGINAL;
+
+        assertEquals(xmlParserConfiguration.getMaxNestingDepth(), XMLParserConfiguration.DEFAULT_MAXIMUM_NESTING_DEPTH);
+
+        xmlParserConfiguration = xmlParserConfiguration.withMaxNestingDepth(42);
+
+        assertEquals(xmlParserConfiguration.getMaxNestingDepth(), 42);
+
+        xmlParserConfiguration = xmlParserConfiguration.withMaxNestingDepth(0);
+
+        assertEquals(xmlParserConfiguration.getMaxNestingDepth(), 0);
+
+        xmlParserConfiguration = xmlParserConfiguration.withMaxNestingDepth(-31415926);
+
+        assertEquals(xmlParserConfiguration.getMaxNestingDepth(), XMLParserConfiguration.UNDEFINED_MAXIMUM_NESTING_DEPTH);
+
+        xmlParserConfiguration = xmlParserConfiguration.withMaxNestingDepth(Integer.MIN_VALUE);
+
+        assertEquals(xmlParserConfiguration.getMaxNestingDepth(), XMLParserConfiguration.UNDEFINED_MAXIMUM_NESTING_DEPTH);
+    }
+
+    @Test
+    public void testMaxNestingDepthSurvivesFurtherConfiguration() {
+        assertEquals(512, XMLParserConfiguration.DEFAULT_MAXIMUM_NESTING_DEPTH);
+        assertEquals(XMLParserConfiguration.DEFAULT_MAXIMUM_NESTING_DEPTH,
+            XMLParserConfiguration.KEEP_STRINGS.getMaxNestingDepth());
+        assertEquals(XMLParserConfiguration.DEFAULT_MAXIMUM_NESTING_DEPTH,
+            new XMLParserConfiguration().getMaxNestingDepth());
+
+        final int maxNestingDepth = 42;
+        XMLParserConfiguration config = XMLParserConfiguration.ORIGINAL.withMaxNestingDepth(maxNestingDepth);
+        // the configuration is immutable
+        assertEquals(XMLParserConfiguration.DEFAULT_MAXIMUM_NESTING_DEPTH,
+            XMLParserConfiguration.ORIGINAL.getMaxNestingDepth());
+
+        config = config.withKeepStrings(true);
+        assertEquals(maxNestingDepth, config.getMaxNestingDepth());
+        config = config.withcDataTagName("altContent");
+        assertEquals(maxNestingDepth, config.getMaxNestingDepth());
+        config = config.withConvertNilAttributeToNull(true);
+        assertEquals(maxNestingDepth, config.getMaxNestingDepth());
+        config = config.withXsiTypeMap(new HashMap<String, XMLXsiTypeConverter<?>>());
+        assertEquals(maxNestingDepth, config.getMaxNestingDepth());
+        config = config.withForceList(new HashSet<String>());
+        assertEquals(maxNestingDepth, config.getMaxNestingDepth());
+
+        assertTrue(config.isKeepStrings());
+        assertEquals("altContent", config.getcDataTagName());
+        assertTrue(config.isConvertNilAttributeToNull());
+
+        final String wayTooLongMalformedXML = new String(new char[6000]).replace("\0", "<a>");
+
+        try {
+            XML.toJSONObject(wayTooLongMalformedXML, config);
+
+            fail("Expecting a JSONException");
+        } catch (JSONException e) {
+            assertTrue("Wrong throwable thrown: not expecting message <" + e.getMessage() + ">",
+                e.getMessage().startsWith("Maximum nesting depth of " + maxNestingDepth));
+        }
+
+        try {
+            XML.toJSONObject(new StringReader(wayTooLongMalformedXML), config);
+
+            fail("Expecting a JSONException");
+        } catch (JSONException e) {
+            assertTrue("Wrong throwable thrown: not expecting message <" + e.getMessage() + ">",
+                e.getMessage().startsWith("Maximum nesting depth of " + maxNestingDepth));
+        }
     }
     
     /**

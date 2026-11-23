@@ -117,4 +117,37 @@ public class Util {
             );
         }
     }
+
+    /**
+     * Runs the given code on a new thread that has a large (8 MiB) stack and
+     * returns whatever it threw. The tests may be run with a small stack
+     * (for example -Xss512k), which is not always enough for code that
+     * legitimately recurses deep, such as parsing XML nested up to the default
+     * maximum nesting depth. Running such code here keeps the outcome
+     * independent of the stack size the test JVM was started with.
+     * @param body the code to run
+     * @return the Throwable thrown by the body, or null if it completed normally
+     */
+    public static Throwable throwableFromLargeStack(final Runnable body) {
+        final Throwable[] thrown = new Throwable[1];
+        Thread thread = new Thread(null, new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    body.run();
+                } catch (Throwable t) {
+                    thrown[0] = t;
+                }
+            }
+        }, "large-stack-test", 8L * 1024L * 1024L);
+        thread.start();
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                    "Interrupted while waiting for the large-stack test thread", e);
+        }
+        return thrown[0];
+    }
 }
